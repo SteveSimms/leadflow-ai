@@ -1,0 +1,7 @@
+agent_name: ""
+city_x: ""
+city_y: ""
+radius_miles: 15
+claude_api_key: ""
+scan_interval_hours: 6
+min_score_for_outreach: 7

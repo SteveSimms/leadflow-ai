@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>LeadFlow AI – Real Estate Lead Engine</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+<div id="setup-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>⚙️ Welcome to LeadFlow AI</h2>
+    <p class="modal-sub">One-time setup — takes 2 minutes</p>
+    <label>Your Name</label>
+    <input id="cfg-agent-name" placeholder="Jane Smith"/>
+    <label>City A (start of corridor)</label>
+    <input id="cfg-city-x" placeholder="San Jose, CA"/>
+    <label>City B (end of corridor)</label>
+    <input id="cfg-city-y" placeholder="San Francisco, CA"/>
+    <label>Search Radius (miles)</label>
+    <input id="cfg-radius" type="number" value="15"/>
+    <label>Claude API Key <span class="hint">(from console.anthropic.com)</span></label>
+    <input id="cfg-api-key" type="password" placeholder="sk-ant-..."/>
+    <button class="btn-primary" onclick="saveConfig()">Save &amp; Launch →</button>
+  </div>
+</div>
+
+<nav class="navbar">
+  <div class="nav-brand">🏠 LeadFlow AI</div>
+  <div class="nav-corridor" id="nav-corridor">Loading...</div>
+  <div class="nav-actions">
+    <button class="btn-scan" id="scan-btn" onclick="startScan()">🔍 Scan for Leads</button>
+    <button class="btn-settings" onclick="openSettings()">⚙️</button>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="stats-row">
+    <div class="stat-card hot">
+      <div class="stat-num" id="stat-hot">0</div>
+      <div class="stat-label">🔥 Hot Leads</div>
+    </div>
+    <div class="stat-card warm">
+      <div class="stat-num" id="stat-warm">0</div>
+      <div class="stat-label">🌤 Warm Leads</div>
+    </div>
+    <div class="stat-card total">
+      <div class="stat-num" id="stat-total">0</div>
+      <div class="stat-label">📋 Total Pipeline</div>
+    </div>
+    <div class="stat-card contacted">
+      <div class="stat-num" id="stat-contacted">0</div>
+      <div class="stat-label">✅ Contacted</div>
+    </div>
+  </div>
+
+  <div class="tab-row">
+    <button class="tab active" onclick="filterLeads('all',this)">All Leads</button>
+    <button class="tab" onclick="filterLeads('hot',this)">🔥 Hot</button>
+    <button class="tab" onclick="filterLeads('warm',this)">🌤 Warm</button>
+    <button class="tab" onclick="filterLeads('contacted',this)">✅ Contacted</button>
+  </div>
+
+  <div id="scan-banner" class="scan-banner hidden">
+    <div class="pulse-dot"></div>
+    AI is scanning your corridor for new leads... this takes ~30 seconds
+  </div>
+
+  <div id="leads-grid" class="leads-grid">
+    <div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <h3>No leads yet</h3>
+      <p>Click <strong>Scan for Leads</strong> to find motivated sellers in your corridor.</p>
+    </div>
+  </div>
+</div>
+
+<div id="lead-modal" class="modal-overlay hidden">
+  <div class="modal lead-detail">
+    <button class="modal-close" onclick="closeLeadModal()">✕</button>
+    <div id="lead-detail-content"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
