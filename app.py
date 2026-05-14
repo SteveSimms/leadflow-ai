@@ -99,23 +99,103 @@ Return: {{"score":1-10,"motivation":"hot|warm|cold","timeline":"0-3mo|3-6mo|6-12
         return {"score": score, "motivation": motivation, "timeline": "3-6mo",
                 "approach": "email", "talking_points": points}
 
-# ── AI: Outreach Writer (Claude) ──────────────────────────────────────────────
-def write_outreach(lead: dict, cls: dict, api_key: str) -> dict:
-    if not api_key or cls.get("score", 0) < 7:
+# ── AI: Outreach Writer (Gemini → Claude → Template fallback) ────────────────
+def _outreach_prompt(lead: dict, cls: dict) -> str:
+    return f"""You are a real estate agent writing outreach for a motivated seller lead.
+Write short, conversational, personalized outreach. Be warm and human — not salesy.
+
+Lead details:
+- Name: {lead.get('name')}
+- Address: {lead.get('address')}, {lead.get('city')}
+- Years owned: {lead.get('years_owned')} years
+- Estimated equity: ${lead.get('equity', 0):,}
+- Source: {lead.get('source')}
+- Key signals: {', '.join(cls.get('talking_points', []))}
+- Agent name: Ellen Beltran
+
+Return ONLY valid JSON (no markdown, no preamble):
+{{"email_subject":"...","email_body":"...(under 120 words)","sms":"...(under 160 chars)","voicemail":"...(under 30 seconds, natural speech)"}}"""
+
+def _write_with_gemini(lead: dict, cls: dict) -> dict:
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
         return {}
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        import google.generativeai as genai
+        genai.configure(api_key=gemini_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        r = model.generate_content(_outreach_prompt(lead, cls))
+        text = r.text.strip()
+        # Strip markdown code fences if present
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        return json.loads(text)
+    except Exception as e:
+        print(f"[gemini] Outreach error: {e}")
+        return {}
+
+def _write_with_claude(lead: dict, cls: dict) -> dict:
+    claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not claude_key:
+        return {}
+    try:
+        client = anthropic.Anthropic(api_key=claude_key)
         r = client.messages.create(
-            model="claude-opus-4-5", max_tokens=600,
-            messages=[{"role":"user","content":f"""
-Write outreach for this HOT real estate lead. Be conversational, under 120 words for email.
-Lead: {json.dumps(lead)}
-Signals: {', '.join(cls.get('talking_points', []))}
-Return JSON: {{"email_subject":"...","email_body":"...","sms":"...","voicemail":"..."}}"""}]
+            model="claude-3-5-haiku-20241022", max_tokens=600,
+            messages=[{"role": "user", "content": _outreach_prompt(lead, cls)}]
         )
         return json.loads(r.content[0].text)
-    except:
+    except Exception as e:
+        print(f"[claude] Outreach error: {e}")
         return {}
+
+def _write_template(lead: dict, cls: dict) -> dict:
+    """Solid template outreach — no API key needed."""
+    name     = lead.get("name", "there").split("&")[0].strip().split()[0]
+    city     = lead.get("city", "your area").split(",")[0]
+    equity   = lead.get("equity", 0)
+    years    = lead.get("years_owned", 0)
+    signals  = cls.get("talking_points", [])
+    key_signal = signals[0] if signals else f"{years} years owned"
+    return {
+        "email_subject": f"Your {city} home — what it's worth today",
+        "email_body": (
+            f"Hi {name},\n\n"
+            f"I came across your property and wanted to reach out. "
+            f"With {years} years in your home, you've built real equity"
+            + (f" — around ${equity:,}" if equity else "") + f" — and the {city} market is moving.\n\n"
+            f"{key_signal}. That's worth a conversation.\n\n"
+            f"I'd love to share a no-obligation market snapshot whenever works for you.\n\n"
+            f"Warm regards,\nEllen Beltran"
+        ),
+        "sms": (
+            f"Hi {name}, I work with homeowners in {city} and your property caught my attention. "
+            f"Happy to share a quick market update — no commitment needed! — Ellen Beltran"
+        )[:160],
+        "voicemail": (
+            f"Hi {name}, this is Ellen Beltran. I specialize in the Menifee to San Diego corridor "
+            f"and your home in {city} caught my attention. I'd love to share what comparable homes "
+            f"are selling for right now — no pressure at all. Please call me back whenever works!"
+        ),
+    }
+
+def write_outreach(lead: dict, cls: dict, api_key: str = "") -> dict:
+    """Try Gemini → Claude → template. Always returns something."""
+    if cls.get("score", 0) < 4:
+        return _write_template(lead, cls)
+    result = _write_with_gemini(lead, cls)
+    if result:
+        print(f"[ai] Outreach written by Gemini for {lead.get('name')}")
+        return result
+    result = _write_with_claude(lead, cls)
+    if result:
+        print(f"[ai] Outreach written by Claude for {lead.get('name')}")
+        return result
+    print(f"[ai] Using template outreach for {lead.get('name')}")
+    return _write_template(lead, cls)
+
 
 # ── Market data cache (avoid hammering Census API) ───────────────────────────
 _market_cache: dict = {}
