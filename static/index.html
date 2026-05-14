@@ -55,6 +55,18 @@
     </div>
   </div>
 
+  <!-- ── Market Pulse Panel ──────────────────────────────────────────────── -->
+  <div class="market-panel" id="market-panel">
+    <div class="market-header">
+      <span class="market-title">📊 Corridor Market Pulse</span>
+      <span class="market-sub" id="market-fetched">Loading live data...</span>
+      <button class="btn-refresh-market" onclick="loadMarket(true)">↻ Refresh</button>
+    </div>
+    <div class="market-grid" id="market-grid">
+      <div class="market-skeleton">Fetching Census data...</div>
+    </div>
+  </div>
+
   <div class="tab-row">
     <button class="tab active" onclick="filterLeads('all',this)">All Leads</button>
     <button class="tab" onclick="filterLeads('hot',this)">🔥 Hot</button>

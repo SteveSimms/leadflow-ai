@@ -95,3 +95,26 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-h
 .copy-btn-row{display:flex;justify-content:flex-end;margin-top:8px}
 .copy-btn-row button{background:var(--primary);color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer}
 @media(max-width:600px){.stats-row{grid-template-columns:repeat(2,1fr)}.container{padding:16px}.navbar{padding:12px 16px}}
+/* Market Pulse Panel */
+.market-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:24px}
+.market-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.market-title{font-weight:700;font-size:1rem}
+.market-sub{font-size:.78rem;color:var(--text-muted);flex:1}
+.btn-refresh-market{background:var(--surface2);color:var(--text-muted);border:1px solid var(--border);padding:5px 12px;border-radius:6px;font-size:.8rem;cursor:pointer;transition:all .2s}
+.btn-refresh-market:hover{color:var(--text);border-color:var(--primary)}
+.market-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+@media(max-width:700px){.market-grid{grid-template-columns:1fr}}
+.market-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px}
+.market-card.highlight{border-color:var(--primary);background:rgba(99,102,241,.07)}
+.market-card-label{font-size:.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;font-weight:600}
+.market-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)}
+.market-row:last-child{border-bottom:none}
+.market-row-label{font-size:.82rem;color:var(--text-muted)}
+.market-row-value{font-size:.9rem;font-weight:600}
+.market-row-value.green{color:var(--green)}
+.market-row-value.hot{color:var(--hot)}
+.market-row-value.primary{color:var(--primary)}
+.opp-score{font-size:2rem;font-weight:800;color:var(--primary);text-align:center;margin:6px 0}
+.opp-label{font-size:.78rem;color:var(--text-muted);text-align:center}
+.market-skeleton{color:var(--text-muted);font-size:.88rem;padding:12px 0}
+

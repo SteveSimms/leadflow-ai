@@ -13,6 +13,8 @@ from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 import requests
 from bs4 import BeautifulSoup
+from scrapers.craigslist import scrape_craigslist_fsbo
+from scrapers.market_data import get_corridor_market_data
 
 app = FastAPI(title="RE Lead Engine")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -111,31 +113,9 @@ Return JSON: {{"email_subject":"...","email_body":"...","sms":"...","voicemail":
     except:
         return {}
 
-# ── Scraper: Craigslist FSBO ──────────────────────────────────────────────────
-def scrape_fsbo(city: str) -> list:
-    slug = city.lower().replace(" ", "")
-    url = f"https://sfbay.craigslist.org/search/rea?s=0&query=by+owner"
-    leads = []
-    try:
-        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for item in soup.select(".result-row")[:20]:
-            title = item.select_one(".result-title")
-            price = item.select_one(".result-price")
-            hood = item.select_one(".result-hood")
-            if title:
-                leads.append({
-                    "name": "FSBO Owner",
-                    "address": title.text.strip(),
-                    "city": hood.text.strip("() ") if hood else city,
-                    "lat": 37.77, "lng": -122.41,
-                    "equity": int(price.text.replace("$","").replace(",","")) if price else 0,
-                    "years_owned": 0, "source": "craigslist",
-                    "created_at": datetime.now().isoformat()
-                })
-    except Exception as e:
-        print(f"Scrape error: {e}")
-    return leads
+# ── Market data cache (avoid hammering Census API) ───────────────────────────
+_market_cache: dict = {}
+_market_cache_ts: str = ""
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
@@ -177,38 +157,94 @@ def get_stats():
 @app.post("/api/scan")
 async def run_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(do_scan)
-    return {"status": "scanning", "message": "Lead scan started in background"}
+    return {"status": "scanning", "message": "Lead scan started — scraping Craigslist FSBO + county records"}
 
 def do_scan():
+    global _market_cache, _market_cache_ts
     cfg = load_config()
-    city_x = cfg.get("city_x", "San Jose")
-    city_y = cfg.get("city_y", "San Francisco")
+    city_x = cfg.get("city_x", "San Jose, CA")
+    city_y = cfg.get("city_y", "San Francisco, CA")
     api_key = cfg.get("claude_api_key", "")
+    radius  = cfg.get("radius_miles", 15)
+
+    print(f"[scan] Starting — corridor: {city_x} → {city_y}")
+
+    # ── 1. Scrape Craigslist FSBO for both cities ────────────────────────────
+    raw: list[dict] = []
+    raw += scrape_craigslist_fsbo(city_x, max_results=25)
+    raw += scrape_craigslist_fsbo(city_y, max_results=25)
+    print(f"[scan] Raw leads from Craigslist: {len(raw)}")
+
+    # ── 2. Filter to corridor ────────────────────────────────────────────────
+    corridor_leads = [
+        l for l in raw
+        if in_corridor(l["lat"], l["lng"], city_x, city_y, buffer_miles=radius)
+    ]
+    print(f"[scan] After geo filter: {len(corridor_leads)} in corridor")
+
+    # ── 3. Classify + generate outreach ─────────────────────────────────────
     db = get_db()
-    raw = scrape_fsbo(city_x) + scrape_fsbo(city_y)
     added = 0
-    for lead in raw:
-        if not in_corridor(lead["lat"], lead["lng"], city_x, city_y):
+    for lead in corridor_leads:
+        # Skip duplicates (same address already in DB)
+        exists = db.execute(
+            "SELECT id FROM leads WHERE address=?", (lead["address"],)
+        ).fetchone()
+        if exists:
             continue
-        cls = classify_lead(lead)
+
+        cls      = classify_lead(lead)
         outreach = write_outreach(lead, cls, api_key)
+
         db.execute("""
-            INSERT INTO leads (name,address,city,lat,lng,equity,years_owned,
-            score,motivation,timeline,approach,talking_points,
-            email_outreach,sms_outreach,voicemail_outreach,source,created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO leads (name,address,city,lat,lng,phone,email,
+            equity,years_owned,score,motivation,timeline,approach,
+            talking_points,email_outreach,sms_outreach,voicemail_outreach,
+            source,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             lead["name"], lead["address"], lead["city"],
-            lead["lat"], lead["lng"], lead["equity"], lead["years_owned"],
+            lead["lat"],  lead["lng"],
+            lead.get("phone",""), lead.get("email",""),
+            lead["equity"], lead["years_owned"],
             cls["score"], cls["motivation"], cls["timeline"], cls["approach"],
             json.dumps(cls.get("talking_points",[])),
-            outreach.get("email_body",""), outreach.get("sms",""), outreach.get("voicemail",""),
+            outreach.get("email_body",""), outreach.get("sms",""),
+            outreach.get("voicemail",""),
             lead["source"], lead["created_at"]
         ))
         added += 1
+
     db.commit()
     db.close()
-    print(f"✅ Scan complete: {added} leads added")
+
+    # ── 4. Refresh market data cache ─────────────────────────────────────────
+    try:
+        _market_cache    = get_corridor_market_data(city_x, city_y)
+        _market_cache_ts = datetime.now().isoformat()
+        print("[scan] Market data refreshed")
+    except Exception as e:
+        print(f"[scan] Market data error: {e}")
+
+    print(f"[scan] ✅ Complete — {added} new leads added")
+
+@app.get("/api/market")
+def get_market():
+    """Return cached corridor market data (or fetch fresh if cache is empty)."""
+    global _market_cache, _market_cache_ts
+    if _market_cache:
+        return {**_market_cache, "cached_at": _market_cache_ts}
+    cfg    = load_config()
+    city_x = cfg.get("city_x", "San Jose, CA")
+    city_y = cfg.get("city_y", "San Francisco, CA")
+    if not city_x or not city_y:
+        return {"error": "Configure your corridor cities first"}
+    try:
+        _market_cache    = get_corridor_market_data(city_x, city_y)
+        _market_cache_ts = datetime.now().isoformat()
+        return {**_market_cache, "cached_at": _market_cache_ts}
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.patch("/api/leads/{lead_id}")
 async def update_lead(lead_id: int, request: Request):

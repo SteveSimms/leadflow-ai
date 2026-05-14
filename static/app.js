@@ -2,6 +2,102 @@ let allLeads = [];
 let currentFilter = 'all';
 let config = {};
 
+const fmt$ = v => v ? '$' + Number(v).toLocaleString() : 'N/A';
+const fmtN = v => v ? Number(v).toLocaleString() : 'N/A';
+const fmtPct = v => v ? v + '%' : 'N/A';
+
+// ── Market Pulse ─────────────────────────────────────────────────────────────
+async function loadMarket(forceRefresh = false) {
+  const grid = document.getElementById('market-grid');
+  const sub  = document.getElementById('market-fetched');
+  if (forceRefresh) {
+    grid.innerHTML = '<div class="market-skeleton">Refreshing Census data...</div>';
+  }
+  try {
+    const url = forceRefresh ? '/api/market?refresh=1' : '/api/market';
+    const d   = await fetch(url).then(r => r.json());
+    if (d.error) { grid.innerHTML = `<div class="market-skeleton">⚠️ ${d.error}</div>`; return; }
+    renderMarket(d);
+    const ts = d.cached_at ? new Date(d.cached_at).toLocaleTimeString() : '';
+    sub.textContent = `Census + Freddie Mac data · updated ${ts}`;
+  } catch(e) {
+    grid.innerHTML = '<div class="market-skeleton">⚠️ Could not load market data. Check your network.</div>';
+  }
+}
+
+function renderMarket(d) {
+  const cx = d.city_x || {};
+  const cy = d.city_y || {};
+  const co = d.corridor || {};
+  const rate = co.mortgage_rate_30yr ? co.mortgage_rate_30yr.toFixed(2) + '%' : 'N/A';
+  const opp  = co.opportunity_score  || 0;
+  const oppColor = opp >= 7 ? 'hot' : opp >= 4 ? 'warm' : 'primary';
+
+  document.getElementById('market-grid').innerHTML = `
+    <!-- City X -->
+    <div class="market-card">
+      <div class="market-card-label">📍 ${cx.name || 'City A'}</div>
+      <div class="market-row">
+        <span class="market-row-label">Median Home Value</span>
+        <span class="market-row-value green">${fmt$(cx.median_home_value)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Owner-Occupied Rate</span>
+        <span class="market-row-value">${fmtPct(cx.owner_rate)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Population</span>
+        <span class="market-row-value">${fmtN(cx.population)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Median HH Income</span>
+        <span class="market-row-value">${fmt$(cx.median_income)}</span>
+      </div>
+    </div>
+
+    <!-- City Y -->
+    <div class="market-card">
+      <div class="market-card-label">📍 ${cy.name || 'City B'}</div>
+      <div class="market-row">
+        <span class="market-row-label">Median Home Value</span>
+        <span class="market-row-value green">${fmt$(cy.median_home_value)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Owner-Occupied Rate</span>
+        <span class="market-row-value">${fmtPct(cy.owner_rate)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Population</span>
+        <span class="market-row-value">${fmtN(cy.population)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Median HH Income</span>
+        <span class="market-row-value">${fmt$(cy.median_income)}</span>
+      </div>
+    </div>
+
+    <!-- Corridor metrics -->
+    <div class="market-card highlight">
+      <div class="market-card-label">🎯 Corridor Opportunity</div>
+      <div class="opp-score ${oppColor}">${opp}/10</div>
+      <div class="opp-label">Opportunity Score</div>
+      <div class="market-row" style="margin-top:12px">
+        <span class="market-row-label">Value Gap</span>
+        <span class="market-row-value primary">${fmt$(co.equity_gap)}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">30-Yr Mortgage Rate</span>
+        <span class="market-row-value ${parseFloat(rate) > 7 ? 'hot' : 'green'}">${rate}</span>
+      </div>
+      <div class="market-row">
+        <span class="market-row-label">Higher-Value City</span>
+        <span class="market-row-value">${co.higher_value_city || '—'}</span>
+      </div>
+    </div>`;
+}
+
+
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   config = await fetch('/api/config').then(r => r.json());
@@ -10,6 +106,7 @@ async function boot() {
   } else {
     updateCorridorBadge();
     await refreshAll();
+    loadMarket();   // async, non-blocking
   }
 }
 
@@ -39,6 +136,7 @@ async function saveConfig() {
   document.getElementById('setup-modal').classList.add('hidden');
   updateCorridorBadge();
   await refreshAll();
+  loadMarket();
 }
 
 function openSettings() {
