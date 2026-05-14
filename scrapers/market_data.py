@@ -94,20 +94,31 @@ def _get_place_data_census(city: str, state_fips: str) -> dict:
             city_low = city.lower().strip()
             best     = None
             for row in rows[1:]:
-                if city_low not in row[0].lower():
+                name_lower = row[0].lower()
+                if city_low not in name_lower:
                     continue
                 data = dict(zip(headers, row))
                 val  = int(data.get("B25077_001E") or 0)
-                if best is None or val > best["median_home_value"]:
-                    tot = int(data.get("B25003_001E") or 1)
-                    own = int(data.get("B25003_002E") or 0)
-                    best = {
-                        "name":             row[0].split(",")[0].strip(),
-                        "median_home_value": val,
-                        "owner_rate":       round(own / max(tot, 1) * 100, 1),
-                        "population":       int(data.get("B01003_001E") or 0),
-                        "median_income":    int(data.get("B19013_001E") or 0),
-                    }
+                if val == 0:
+                    continue
+                tot = int(data.get("B25003_001E") or 1)
+                own = int(data.get("B25003_002E") or 0)
+                candidate = {
+                    "name":             row[0].split(",")[0].strip(),
+                    "median_home_value": val,
+                    "owner_rate":       round(own / max(tot, 1) * 100, 1),
+                    "population":       int(data.get("B01003_001E") or 0),
+                    "median_income":    int(data.get("B19013_001E") or 0),
+                    "_is_city":         "city" in name_lower and "cdp" not in name_lower,
+                }
+                # Prefer incorporated cities over CDPs; among same type, pick largest population
+                if best is None:
+                    best = candidate
+                elif candidate["_is_city"] and not best["_is_city"]:
+                    best = candidate  # always prefer a proper city over a CDP
+                elif candidate["_is_city"] == best["_is_city"]:
+                    if candidate["population"] > best["population"]:
+                        best = candidate
             if best:
                 print(f"[census] ✅ {city}: ${best['median_home_value']:,}")
                 return best

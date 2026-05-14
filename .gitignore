@@ -40,3 +40,4 @@ logs/
 
 # Test artifacts
 test.txt
+.env.local

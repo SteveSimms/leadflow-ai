@@ -2,6 +2,10 @@
 Real Estate Lead Engine - FastAPI Backend
 Serves the dashboard and handles all lead processing
 """
+# Load .env first so all env vars are available to every module
+from dotenv import load_dotenv
+load_dotenv()
+
 import sqlite3, json, os, yaml
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, JSONResponse
